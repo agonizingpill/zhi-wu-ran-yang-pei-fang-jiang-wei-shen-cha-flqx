@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from .models import Trial,DyeRecipe
 from .fulfillment_models import DyeLot,DyeIssue
 from .batch_service import get_batch
+from .correction_service import guarded_by_correction
 from .recipe_service import log,require
 
 def recipe_snapshot(db,batch):
@@ -24,6 +25,7 @@ def set_state(db,key,p,user):
 
 def issue(db,p,user):
     batch=get_batch(db,p.batch_id)
+    guarded_by_correction(db,batch)
     if batch.state=='released':raise HTTPException(409,'已签放历史缸次不能追加称料')
     if db.scalar(select(DyeIssue).where(DyeIssue.batch_id==batch.id)):raise HTTPException(409,'该缸已整单领料，不可重复扣减')
     ids=[p.lot_a_id,p.lot_b_id,p.lot_c_id]
@@ -46,5 +48,6 @@ def issue(db,p,user):
     log(db,user,f'整单称料 {batch.code} A/B/C已按配方扣库存');db.commit();return result
 
 def release_guard(db,batch):
-    issues=db.scalars(select(DyeIssue).where(DyeIssue.batch_id==batch.id)).all()
-    if len(issues)!=3 or {x.component for x in issues}!={'A','B','C'}:raise HTTPException(409,'新签放操作须完成A/B/C整单称料领用')
+    from .correction_service import effective_issues
+    issues=effective_issues(db,batch.id)
+    if len(issues)!=3 or {x['component'] for x in issues}!={'A','B','C'}:raise HTTPException(409,'新签放操作须完成A/B/C整单称料领用')

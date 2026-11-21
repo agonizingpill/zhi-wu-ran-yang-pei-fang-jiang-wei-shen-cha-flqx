@@ -33,6 +33,8 @@ def release_batch(db,key,user):
     batch=get_batch(db,key)
     if batch.state!='qualified' or batch.delta_e is None or batch.delta_e>3:raise HTTPException(409,'缸次尚未合格、超色差或已放行，不能签放')
     from .stock_service import release_guard
+    from .correction_service import release_note
     release_guard(db,batch)
+    note=release_note(db,batch)
     batch.state='released';batch.released_by=user.email
-    log(db,user,f'签放生产缸 {batch.code}');db.commit();return batch
+    log(db,user,f'签放生产缸 {batch.code}'+(f'（{note}）' if note else ''));db.commit();return batch
